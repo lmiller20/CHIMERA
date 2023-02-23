@@ -57,7 +57,9 @@ def loglike(cube, ndim, nparams):
     gas_scale=np.array([1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1., 1., 1.]) #can be made free params if desired (won't affect mmw)#can be made free
     foo=fx_trans(x,wlgrid,gas_scale,xsects)
     y_binned=foo[0]
-
+    print(wlgrid)
+    print(y_meas)
+    print(y_binned)
     loglikelihood=-0.5*np.sum((y_meas-y_binned)**2/err**2)  #nothing fancy here
     return loglikelihood
 

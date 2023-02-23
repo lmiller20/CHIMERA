@@ -8,24 +8,25 @@ import pickle
 from matplotlib.pyplot import *
 
 
-outpath="./OUTPUT/pmn_transmission_jwst_cc"
+outpath="./OUTPUT/pmn_transmission_jwst-FINAL-NIRSpec-TAKE2_cc"
 if not os.path.exists(outpath): os.mkdir(outpath)  #creating folder to dump MultiNest output
 
 
 #load crosssections between wnomin and wnomax
-xsects=xsects_JWST(750, 15000)  #make sure this is identical to what was used to generate simulated data
+xsects=xsects_JWST(1666,20000)
+#xsects=xsects_JWST(750, 15000)  #make sure this is identical to what was used to generate simulated data
 
 # log-likelihood
 def loglike(cube, ndim, nparams):
 
     #setting default parameters---will be fixed to these values unless replaced with 'theta'
     #planet/star system params--typically not free parameters in retrieval
-    Rp= 1.036#0.930#*x[4]# Planet radius in Jupiter Radii--this will be forced to be 10 bar radius--arbitrary (scaling to this is free par)
-    Rstar=0.667#0.598   #Stellar Radius in Solar Radii
-    M =2.034#1.78    #Mass in Jupiter Masses
+    Rp= 0.865#0.930#*x[4]# Planet radius in Jupiter Radii--this will be forced to be 10 bar radius--arbitrary (scaling to this is free par)
+    Rstar=0.829#0.598   #Stellar Radius in Solar Radii
+    M = 0.271#1.78    #Mass in Jupiter Masses
 
     #TP profile params (3--Guillot 2010, Parmentier & Guillot 2013--see Line et al. 2013a for implementation)
-    Tirr=1400#1500#x[0]#544.54 #terminator **isothermal** temperature--if full redistribution this is equilibrium temp
+    Tirr=400. #1500#x[0]#544.54 #terminator **isothermal** temperature--if full redistribution this is equilibrium temp
     logKir=-1.5  #TP profile IR opacity controlls the "vertical" location of the gradient
     logg1=-0.7     #single channel Vis/IR opacity. Controls the delta T between deep T and TOA T
     Tint=200.
@@ -48,12 +49,11 @@ def loglike(cube, ndim, nparams):
     RaySlope = 0
 
     #unpacking parameters to retrieve
-    Tirr, logMet, logCtoO, logKzz, fsed ,logPbase,logCldVMR,xRp=cube[0],cube[1],cube[2],cube[3],cube[4],cube[5],cube[6],cube[7]
+    Tirr, logMet, logCtoO, logKzz, fsed ,logPbase,logCldVMR,xRp,logPQCarbon=cube[0],cube[1],cube[2],cube[3],cube[4],cube[5],cube[6],cube[7],cube[8]
 
     ##all values required by forward model go here--even if they are fixed
     x=np.array([Tirr, logKir,logg1, Tint,logMet, logCtoO, logPQCarbon,logPQNitrogen, Rp*xRp, Rstar, M, logKzz, fsed,logPbase,logCldVMR, logKcld, logRayAmp, RaySlope])
     gas_scale=np.array([1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1., 1., 1.]) #can be made free params if desired (won't affect mmw)#can be made free
-    wlgrid=-1
     foo=fx_trans(x,wlgrid,gas_scale,xsects)
     y_binned=foo[0]
 
@@ -64,7 +64,7 @@ def loglike(cube, ndim, nparams):
 # prior transform
 def prior(cube,ndim,nparams):
     #prior ranges...
-    cube[0] = 1400 * cube[0] + 400  #Tirr: 400 - 1800
+    cube[0] = 300 * cube[0] + 300  #Tirr: 300 - 600
     cube[1] = 5*cube[1]-2.   #[M/H]: -2.0 - 3.0 (0.01x - 1000x)
     cube[2] = 2.3*cube[2]-2   #log(C/O): -2 - 0.3 (0.01 to 2.0 )
     cube[3] = 6*cube[3]+5  #log(Kzz): 5 - 11 (1E5 - 1E11 cm2/s)
@@ -72,11 +72,12 @@ def prior(cube,ndim,nparams):
     cube[5] = 7.5*cube[5]-6.0  #logPbase: -6.0 - 1.5 (1 ubar - 30 bar)
     cube[6] = 13*cube[6]-15  #logCldVMR: -15 - -2
     cube[7] = 1*cube[7]+0.5  #xRp: 0.5 - 1.5 (multiplicative factor to "fiducial" 10 bar radius)
+    cube[8] = 8*cube[8]-6.0  # quench pressure for Carbon and Oxygen compounds; form 10**(-6) to 10**(2) bars (i.e., 1 microbar down to 100 bars).
 
 #####loading in data##########
-junk, y_meas, err=np.loadtxt('simulated_trans_JWST.txt').T
+wlgrid, y_meas, err=np.loadtxt('chimera_toi199.dat').T
 outname=outpath+'.pic'  #dynesty output file name (saved as a pickle)
-Nparam=7  #number of parameters--make sure it is the same as what is in prior and loglike
+Nparam=9  #number of parameters--make sure it is the same as what is in prior and loglike
 Nlive=500 #number of nested sampling live points
 
 

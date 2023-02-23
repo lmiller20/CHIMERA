@@ -14,17 +14,17 @@ import corner
 
 #PLOTTING UP CORNER PLOT----------------------------------------------------------------
 #import run
-pic=pickle.load(open('./OUTPUT/pmn_transmission_jwst_cc.pic','rb'), encoding='latin1')
+pic=pickle.load(open('OUTPUT/pmn_transmission_jwst-FINAL-NIRSpec-TAKE2_cc.pic','rb'), encoding='latin1')
 samples=pic[:,:-1]
 lnprob=pic[:,-1]
 
-outname='pmn_transmission_jwst_cc'
+outname='pmn_transmission_jwst_cc_TAKE2'
 
 
 # corner plot
-titles=np.array(['T$_{irr}$', '[M/H]', 'log(C/O)', 'log(K$_{zz}$)', 'f$_{sed}$' ,'log(P$_{b}$)','log(VMR$_{cld,b}$)','$\\times$R$_p$'])
-priorlow=np.array([  400, -2,  -2,  5.0,  0.5, -6.0, -15., 0.5])
-priorhigh=np.array([1800, 3.0, 0.3, 11,   6.0,  1.5,  -2,  1.5])
+titles=np.array(['T$_{irr}$', '[M/H]', 'log(C/O)', 'log(K$_{zz}$)', 'f$_{sed}$' ,'log(P$_{b}$)','log(VMR$_{cld,b}$)','$\\times$R$_p$','log($P_Q$)'])
+priorlow=np.array([  300, -2,  -2,  5.0,  0.5, -6.0, -15., 0.5, -6])
+priorhigh=np.array([600, 3.0, 0.3, 11,   6.0,  1.5,  -2,  1.5, 2])
 Npars=len(titles)
 ext=np.zeros([2,Npars])
 ext=ext.T
@@ -42,25 +42,26 @@ show()
 
 #GENERATING RANDOMLY SAMPLES SPECTRA & TP PROFILES-----------------------------------------------------
 import numpy as np
-xsecs=xsects_JWST(750, 15000)  #5800 cm-1 (1.72 um) to 9100 cm-1 (1.1 um)
+xsecs=xsects_JWST(1666,20000)
+#xsecs=xsects_JWST(750, 15000)  #5800 cm-1 (1.72 um) to 9100 cm-1 (1.1 um)
 
 
 Nspectra=200
 
 #loading in data again just to be safe
-wlgrid, y_meas, err=np.loadtxt('simulated_trans_JWST.txt').T
+wlgrid, y_meas, err=np.loadtxt('chimera_toi199.dat').T
 
 #setting up default parameter values--SET THESE TO SAME VALUES AS IN LOG-LIKE FUNCTION
 #planet/star system params--xRp is the "Rp" free parameter, M right now is fixed, but could be free param
-Rp= 1.036#0.930#*x[4]# Planet radius in Jupiter Radii--this will be forced to be 10 bar radius--arbitrary (scaling to this is free par)
-Rstar=0.667#0.598   #Stellar Radius in Solar Radii
-M =2.034#1.78    #Mass in Jupiter Masses
+Rp= 0.865#0.930#*x[4]# Planet radius in Jupiter Radii--this will be forced to be 10 bar radius--arbitrary (scaling to this is free par)
+Rstar=0.829#0.598   #Stellar Radius in Solar Radii
+M = 0.271#1.78    #Mass in Jupiter Masses
 
 #TP profile params (3--Guillot 2010, Parmentier & Guillot 2013--see Line et al. 2013a for implementation)
-Tirr=1600#1500#x[0]#544.54 #terminator **isothermal** temperature--if full redistribution this is equilibrium temp
+Tirr=400. #1500#x[0]#544.54 #terminator **isothermal** temperature--if full redistribution this is equilibrium temp
 logKir=-1.5  #TP profile IR opacity controlls the "vertical" location of the gradient
 logg1=-0.7     #single channel Vis/IR opacity. Controls the delta T between deep T and TOA T
-Tint=200
+Tint=200.
 
 #Composition parameters---assumes "chemically consistnat model" described in Kreidberg et al. 2015
 logMet=0.0#x[1]#1.5742E-2 #.   #Metallicity relative to solar log--solar is 0, 10x=1, 0.1x = -1 used -1.01*log10(M)+0.6
@@ -85,7 +86,8 @@ logP = np.arange(-6.8,1.5,0.1)+0.1
 Tarr=np.zeros((len(draws),len(logP)))
 P = 10.0**logP
 for i in range(len(draws)):
-    Tirr, logMet, logCtoO, logKzz, fsed ,logPbase,logCldVMR,xRp=samples[draws[i],:]
+    Tirr, logMet, logCtoO, logKzz, fsed ,logPbase,logCldVMR,xRp,logPQCarbon = samples[draws[i],:]
+    #Tirr, logMet, logCtoO, logKzz, fsed ,logPbase,logCldVMR,xRp=samples[draws[i],:]
     g0=6.67384E-11*M*1.898E27/(Rp*xRp*71492.*1.E3)**2
     kv=10.**(logg1+logKir)
     kth=10.**logKir
@@ -134,11 +136,22 @@ y_binned_array=np.zeros((len(wlgrid), Nspectra))
 
 for i in range(Nspectra):
     print(i)
+    """
+    Tirr, logMet, logCtoO, logKzz, fsed ,logPbase,logCldVMR,xRp,logPQCarbon=cube[0],cube[1],cube[2],cube[3],cube[4],cube[5],cube[6],cube[7],cube[8]
+
+    ##all values required by forward model go here--even if they are fixed
+    x=np.array([Tirr, logKir,logg1, Tint,logMet, logCtoO, logPQCarbon,logPQNitrogen, Rp*xRp, Rstar, M, logKzz, fsed,logPbase,logCldVMR, logKcld, logRayAmp, RaySlope])
+    gas_scale=np.array([1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1., 1., 1.]) #can be made free params if desired (won't affect mmw)#can be made free
+    foo=fx_trans(x,wlgrid,gas_scale,xsects)
+    y_binned=foo[0]
+
+    loglikelihood=-0.5*np.sum((y_meas-y_binned)**2/err**2)  #nothing fancy here
+    """
     #make sure this is the same as in log-Like
-    Tirr, logMet, logCtoO, logKzz, fsed ,logPbase,logCldVMR,xRp=samples[draws[i],:]
+    Tirr, logMet, logCtoO, logKzz, fsed ,logPbase,logCldVMR,xRp,logPQCarbon=samples[draws[i],:]
     x=np.array([Tirr, logKir,logg1, Tint,logMet, logCtoO, logPQCarbon,logPQNitrogen, Rp*xRp, Rstar, M, logKzz, fsed,logPbase,logCldVMR, logKcld, logRayAmp, RaySlope])
     gas_scale=np.array([1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1., 1., 1.])
-    wlgrid=-1
+    #wlgrid=-1
     y_binned,y_mod,wno,atm=fx_trans(x,wlgrid,gas_scale, xsecs) 
 
     y_mod_array[:,i]=y_mod
@@ -182,7 +195,7 @@ fill_between(1E4/wno[::-1],y_low_1sig[::-1]*100,y_high_1sig[::-1]*100,facecolor=
 plot(1E4/wno, y_median*100,'g')
 
 
-errorbar(1E4/wno, y_meas*100, yerr=err*100, xerr=None, fmt='ok',ms=2, label='Data',alpha=0.5)
+errorbar(wlgrid, y_meas*100, yerr=err*100, xerr=None, fmt='ok',ms=2, label='Data',alpha=0.5)
 ax.set_xscale('log')
 ax.set_xticks([0.3, 0.5,0.8,1, 2, 3, 4, 5, 6, 8, 10, 12])
 ax.axis([0.5,12,ymin,ymax])
